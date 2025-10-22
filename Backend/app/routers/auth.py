@@ -16,16 +16,28 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.get("/google/login")
 async def google_login(request: Request):
+    """
+    Kicks off the Google OAuth flow by redirecting the user to Google.
+    Ensures session is written BEFORE redirect.
+    """
     print("\n=== GOOGLE LOGIN START ===")
     print("Incoming request headers:", dict(request.headers))
     print("Incoming request.cookies:", request.cookies)
 
-    # FORCE a session write so the response will include Set-Cookie for debugging:
-    request.session["_debug_write"] = "1"
+    # --- Force session modification ---
+    # Authlib requires the session to exist before redirecting, otherwise no cookie is sent.
+    request.session["init"] = True
     print("Session BEFORE redirect (after write):", dict(request.session))
 
     redirect_uri = settings.OAUTH_REDIRECT_URI
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    response = await oauth.google.authorize_redirect(request, redirect_uri)
+
+    # Double ensure session is committed by setting another flag (debug)
+    request.session["_force_cookie"] = "1"
+    print("✅ Session modification forced, response will include Set-Cookie.")
+
+    return response
+
 
 
 # Use api_route so we can accept GET and HEAD explicitly
