@@ -22,7 +22,7 @@ app = FastAPI(
 )
 
 # --- ProxyHeadersMiddleware FIRST (so X-Forwarded-* are honored early) ---
-# This ensures the app correctly detects scheme (https) behind the proxy.
+# Ensures the app correctly detects scheme (https) behind Render/Cloudflare proxies.
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # --- CORS Middleware Configuration ---
@@ -43,18 +43,20 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ Setting SessionMiddleware with https_only=True, same_site='none', domain='.onrender.com'")
+    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none' and domain='aira3.onrender.com'")
+    # IMPORTANT: domain is set explicitly to the backend host to avoid Chrome rejecting the cookie
+    # in this Render + Cloudflare + subdomain setup.
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         session_cookie="session",
         same_site="none",
         https_only=True,
-        domain=".onrender.com",  # Make session cookie valid for all subdomains of onrender.com
+        domain="aira3.onrender.com",  # <- explicit backend hostname
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
-    # For local dev (http) we allow https_only=False and a more permissive SameSite.
+    # For local dev (http) use https_only=False and safer SameSite
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
