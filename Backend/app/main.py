@@ -2,7 +2,8 @@
 import logging
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # <-- 1. IMPORT THIS
 
 from .config import settings
 from .services.auth import oauth 
@@ -20,9 +21,16 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# --- NEW FIX: Add ProxyHeadersMiddleware FIRST ---
+# This forces the app to respect X-Forwarded-Proto (https)
+# *before* any other middleware runs.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+# --- END OF NEW FIX ---
+
+
 # --- CORS Middleware Configuration ---
 origins = [
-    settings.FRONTEND_BASE_URL,  # <-- THIS IS THE CORRECTED TYPO
+    settings.FRONTEND_BASE_URL,  # <-- This was the typo I fixed
     "http://localhost:5173",
     "http://localhost:3000",
 ]
@@ -38,12 +46,12 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ Setting SessionMiddleware with secure=True and same_site='none'")
+    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         same_site="none",
-        secure=True  # Force the Secure flag
+        https_only=True  # <-- This is the CORRECT argument, not 'secure'
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
