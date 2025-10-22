@@ -22,7 +22,7 @@ app = FastAPI(
 
 # --- CORS Middleware Configuration ---
 origins = [
-    settings.FRONT_END_BASE_URL,
+    settings.FRONTEND_BASE_URL,  # <-- THIS IS THE CORRECTED TYPO
     "http://localhost:5173",
     "http://localhost:3000",
 ]
@@ -43,7 +43,7 @@ if settings.APP_ENV == "prod":
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         same_site="none",
-        secure=True  # <-- THIS IS THE FINAL FIX: Force the Secure flag
+        secure=True  # Force the Secure flag
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
