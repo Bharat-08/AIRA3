@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..db.session import get_db
 from ..services.auth import oauth, provision_via_invite
 from ..security.jwt import issue_jwt, set_jwt_cookie, clear_jwt_cookie
-from ..config import settings
+from ..config import settings  # <-- This is already imported, which is great
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -17,7 +17,11 @@ async def google_login(request: Request):
     """
     Kicks off the Google OAuth flow by redirecting the user to Google.
     """
-    redirect_uri = str(request.url_for("google_callback"))
+    # --- THIS IS THE FIX ---
+    # We now use the environment variable directly, which is correct for production.
+    redirect_uri = settings.OAUTH_REDIRECT_URI
+    # --- END OF FIX ---
+    
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 

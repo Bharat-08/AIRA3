@@ -1,25 +1,22 @@
 import hashlib
 import uuid
 from datetime import datetime, timezone
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth  # <-- Import this
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
-from ..config import settings
+# We no longer need 'settings' here for registration
 from ..models.user import User
 from ..models.organization import Organization
 from ..models.membership import Membership
 from ..models.invitation import Invitation
 
+# --- FIX: Create the oauth object, but DO NOT configure it here ---
+# It will be configured in main.py *after* middleware is loaded.
 oauth = OAuth()
-oauth.register(
-    name="google",
-    client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+# --- END OF FIX ---
+
 
 def upsert_user(db: Session, *, email: str, name: str | None, avatar_url: str | None) -> User:
     """
