@@ -5,6 +5,10 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import auth, health, me, orgs, superadmin, favorites, upload, roles, search
+import logging  # <-- ADD THIS IMPORT
+
+# --- Setup Logger ---
+logger = logging.getLogger("uvicorn") # <-- ADD THIS
 
 app = FastAPI(
     title="Recruiter Platform API",
@@ -28,8 +32,12 @@ app.add_middleware(
 )
 
 # --- SessionMiddleware Configuration (Production & Development) ---
-# This is the fix to solve the MismatchingStateError
+# THIS IS THE DEBUG FIX:
+logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'") # <-- DEBUG LINE
+
 if settings.APP_ENV == "prod":
+    logger.info("✅ RUNNING IN PRODUCTION MODE (prod)") # <-- DEBUG LINE
+    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'") # <-- DEBUG LINE
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
@@ -37,7 +45,7 @@ if settings.APP_ENV == "prod":
         same_site="none"  # Required for cross-domain OAuth redirects
     )
 else:
-    # Default settings for local development (http://localhost)
+    logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})") # <-- DEBUG LINE
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY
@@ -48,12 +56,11 @@ else:
 # --- API Routers ---
 app.include_router(health.router)
 app.include_router(auth.router)
+# ... (rest of your routers) ...
 app.include_router(me.router)
 app.include_router(upload.router)
 app.include_router(orgs.router)
 app.include_router(superadmin.router, prefix="/superadmin", tags=["Super Admin"])
 app.include_router(favorites.router, tags=["Favorites"])
 app.include_router(search.router, prefix="/search", tags=["Search"])
-
-# The roles router is now included, activating all its endpoints.
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
