@@ -19,13 +19,12 @@ async def google_login(request: Request):
     print("\n=== GOOGLE LOGIN START ===")
     print("Incoming request headers:", dict(request.headers))
     print("Incoming request.cookies:", request.cookies)
-    try:
-        print("Session BEFORE redirect:", dict(request.session))
-    except Exception as e:
-        print("Session BEFORE redirect: <error reading session>", e)
+
+    # FORCE a session write so the response will include Set-Cookie for debugging:
+    request.session["_debug_write"] = "1"
+    print("Session BEFORE redirect (after write):", dict(request.session))
 
     redirect_uri = settings.OAUTH_REDIRECT_URI
-    # NOTE: prefer top-level navigation on frontend (window.location.href = backend + '/auth/google/login')
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
