@@ -1,7 +1,5 @@
 # recruiter-platform/backend/app/main.py
-
 import logging
-import os
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
@@ -24,6 +22,7 @@ app = FastAPI(
 )
 
 # --- ProxyHeadersMiddleware FIRST (so X-Forwarded-* are honored early) ---
+# This ensures the app correctly detects scheme (https) behind the proxy.
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # --- CORS Middleware Configuration ---
@@ -44,21 +43,24 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
-    # session_cookie can be set explicitly; default name is fine too.
+    logger.info("✅ Setting SessionMiddleware with https_only=True, same_site='none', domain='.onrender.com'")
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
+        session_cookie="session",
         same_site="none",
         https_only=True,
+        domain=".onrender.com",  # Make session cookie valid for all subdomains of onrender.com
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
+    # For local dev (http) we allow https_only=False and a more permissive SameSite.
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
-        https_only=False,
+        session_cookie="session",
         same_site="lax",
+        https_only=False,
     )
 
 # Log whether we have a session secret present (do not log the secret itself)
