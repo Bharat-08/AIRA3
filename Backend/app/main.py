@@ -1,14 +1,16 @@
 # recruiter-platform/backend/app/main.py
+
 import logging
+import os
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # <-- 1. IMPORT THIS
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from .config import settings
-from .services.auth import oauth 
+from .services.auth import oauth
 from .routers import (
-    auth, health, me, orgs, superadmin, 
+    auth, health, me, orgs, superadmin,
     favorites, upload, roles, search
 )
 
@@ -21,16 +23,12 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# --- NEW FIX: Add ProxyHeadersMiddleware FIRST ---
-# This forces the app to respect X-Forwarded-Proto (https)
-# *before* any other middleware runs.
+# --- ProxyHeadersMiddleware FIRST (so X-Forwarded-* are honored early) ---
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
-# --- END OF NEW FIX ---
-
 
 # --- CORS Middleware Configuration ---
 origins = [
-    settings.FRONTEND_BASE_URL,  # <-- This was the typo I fixed
+    settings.FRONTEND_BASE_URL,
     "http://localhost:5173",
     "http://localhost:3000",
 ]
@@ -47,18 +45,24 @@ logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
     logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
+    # session_cookie can be set explicitly; default name is fine too.
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         same_site="none",
-        https_only=True  # <-- This is the CORRECT argument, not 'secure'
+        https_only=True,
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
     app.add_middleware(
         SessionMiddleware,
-        secret_key=settings.SESSION_SECRET_KEY
+        secret_key=settings.SESSION_SECRET_KEY,
+        https_only=False,
+        same_site="lax",
     )
+
+# Log whether we have a session secret present (do not log the secret itself)
+logger.info("Session secret present: %s", bool(settings.SESSION_SECRET_KEY))
 
 # --- Configure OAuth *AFTER* SessionMiddleware ---
 logger.info("Registering Google OAuth client...")
@@ -70,7 +74,6 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 logger.info("Google OAuth client registered.")
-
 
 # --- API Routers ---
 app.include_router(health.router)
