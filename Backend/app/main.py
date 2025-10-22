@@ -27,11 +27,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- SessionMiddleware ---
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SESSION_SECRET_KEY,
-)
+# --- SessionMiddleware Configuration (Production & Development) ---
+# This is the fix to solve the MismatchingStateError
+if settings.APP_ENV == "prod":
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.SESSION_SECRET_KEY,
+        https_only=True,  # Enforce HTTPS for production
+        same_site="none"  # Required for cross-domain OAuth redirects
+    )
+else:
+    # Default settings for local development (http://localhost)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.SESSION_SECRET_KEY
+    )
+# --- End of Fix ---
+
 
 # --- API Routers ---
 app.include_router(health.router)
@@ -43,7 +55,5 @@ app.include_router(superadmin.router, prefix="/superadmin", tags=["Super Admin"]
 app.include_router(favorites.router, tags=["Favorites"])
 app.include_router(search.router, prefix="/search", tags=["Search"])
 
-# --- THIS IS THE FIX ---
 # The roles router is now included, activating all its endpoints.
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
-# --- END OF FIX ---

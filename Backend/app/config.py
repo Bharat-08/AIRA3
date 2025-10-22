@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_ignore_empty=True)
 
     # --- Core Application Settings ---
-    APP_ENV: str = "dev"
+    APP_ENV: str = "prod"
     APP_BASE_URL: str = "http://localhost:8000"
     FRONTEND_BASE_URL: str = "http://localhost:3000"
 
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # --- Google OAuth ---
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
-    OAUTH_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
+    OAUTH_REDIRECT_URI: str = "https://aira3.onrender.com/auth/google/callback"
     
     # --- JWT (RS256) Authentication ---
     JWT_PRIVATE_KEY: str
