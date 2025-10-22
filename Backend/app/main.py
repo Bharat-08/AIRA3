@@ -5,7 +5,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-# Import oauth from the service, but we will configure it HERE
 from .services.auth import oauth 
 from .routers import (
     auth, health, me, orgs, superadmin, 
@@ -23,7 +22,7 @@ app = FastAPI(
 
 # --- CORS Middleware Configuration ---
 origins = [
-    settings.FRONTEND_BASE_URL,
+    settings.FRONT_END_BASE_URL,
     "http://localhost:5173",
     "http://localhost:3000",
 ]
@@ -39,12 +38,12 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
+    logger.info("✅ Setting SessionMiddleware with secure=True and same_site='none'")
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
-        https_only=True,
-        same_site="none"
+        same_site="none",
+        secure=True  # <-- THIS IS THE FINAL FIX: Force the Secure flag
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
@@ -53,8 +52,7 @@ else:
         secret_key=settings.SESSION_SECRET_KEY
     )
 
-# --- NEW FIX: Configure OAuth *AFTER* SessionMiddleware ---
-# This connects Authlib to the session state
+# --- Configure OAuth *AFTER* SessionMiddleware ---
 logger.info("Registering Google OAuth client...")
 oauth.register(
     name="google",
@@ -64,11 +62,9 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 logger.info("Google OAuth client registered.")
-# --- END OF FIX ---
 
 
 # --- API Routers ---
-# Routers are included *after* all middleware and configs
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
@@ -78,4 +74,3 @@ app.include_router(superadmin.router, prefix="/superadmin", tags=["Super Admin"]
 app.include_router(favorites.router, tags=["Favorites"])
 app.include_router(search.router, prefix="/search", tags=["Search"])
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
-
