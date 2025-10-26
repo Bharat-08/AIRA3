@@ -10,7 +10,7 @@ export const LoginPage = () => {
   const { user, isLoading } = useAuth();
 
   const backendLoginUrl = `${
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+    import.meta.env.VITE_API_BASE_URL
   }/auth/google/login`;
 
   if (isLoading) return <div>Loading...</div>;

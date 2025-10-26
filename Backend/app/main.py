@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from starlette.routing import Mount # <-- You might need to import this if not already
+from fastapi.staticfiles import StaticFiles # <-- Or this one, but it's likely not needed
 
 from .config import settings
 from .services.auth import oauth
@@ -12,46 +14,59 @@ from .routers import (
     favorites, upload, roles, search
 )
 
+# --- Setup Logger ---
 logger = logging.getLogger("uvicorn")
 
+
+# --- THIS IS THE FIX ---
+# By setting redirect_slashes=True, FastAPI will automatically
+# handle the trailing slash added by Render.
+# A request to /auth/google/callback/ will be correctly
+# routed to your /auth/google/callback endpoint.
 app = FastAPI(
     title="Recruiter Platform API",
     description="API for the multi-tenant recruiter platform.",
     version="0.1.0",
+    redirect_slashes=True, # <-- ADD THIS LINE
 )
+# --- END OF FIX ---
 
-# 1) Honor X-Forwarded-* so scheme=HTTPS is detected behind Render
+
+# --- ProxyHeadersMiddleware FIRST (so X-Forwarded-* are honored early) ---
+# Ensures the app correctly detects scheme (https) behind Render/Cloudflare proxies.
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
-# 2) CORS: explicitly include your prod frontend origin, plus localhost
-#    Do not rely solely on FRONTEND_BASE_URL for this.
-PROD_FRONTEND = "https://aira3-frontend.onrender.com"
-LOCAL_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
-ALLOWED_ORIGINS = {PROD_FRONTEND, settings.FRONTEND_BASE_URL, *LOCAL_ORIGINS}
-
+# --- CORS Middleware Configuration ---
+# Cleaned up the origins list to avoid duplicates/typos
+origins = [
+    settings.FRONTEND_BASE_URL,
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(ALLOWED_ORIGINS),
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 3) Sessions
-logger.info("Checking APP_ENV: '%s'", settings.APP_ENV)
+# --- SessionMiddleware Configuration (Production & Development) ---
+logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ SessionMiddleware: https_only=True, same_site='none'")
+    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         session_cookie="session",
-        same_site="none",     # required for cross-site OAuth redirects
-        https_only=True,      # sets Secure
-        # no explicit domain -> cookie is scoped to aira3.onrender.com
+        same_site="none",
+        https_only=True,
+        # domain="aira3.onrender.com", # <-- This line is correctly removed
     )
 else:
-    logger.warning("⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV=%s)", settings.APP_ENV)
+    logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
+    # For local dev (http) use https_only=False and safer SameSite
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
@@ -60,9 +75,10 @@ else:
         https_only=False,
     )
 
+# Log whether we have a session secret present (do not log the secret itself)
 logger.info("Session secret present: %s", bool(settings.SESSION_SECRET_KEY))
 
-# 4) Register Google OAuth AFTER SessionMiddleware
+#  Configure OAuth *AFTER* SessionMiddleware 
 logger.info("Registering Google OAuth client...")
 oauth.register(
     name="google",
@@ -73,7 +89,7 @@ oauth.register(
 )
 logger.info("Google OAuth client registered.")
 
-# 5) Routers
+#  API Routers 
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
