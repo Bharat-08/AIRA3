@@ -21,6 +21,7 @@ async def google_login(request: Request):
     Ensures session is written BEFORE redirect.
     """
     print("\n=== GOOGLE LOGIN START ===")
+    print(f"DEBUG: Request scheme: {request.url.scheme}")
     print("Incoming request headers:", dict(request.headers))
     print("Incoming request.cookies:", request.cookies)
 
