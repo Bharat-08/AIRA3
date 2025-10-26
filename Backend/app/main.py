@@ -30,11 +30,17 @@ origins = [
     settings.FRONTEND_BASE_URL,
     "http://localhost:5173",
     "http://localhost:3000",
-    "https://aira3-frontend.onrender.com", # <-- Fixed typo here
+    "https.aira3-frontend.onrender.com", # <- This had a typo, but let's fix it properly
+    "https://aira3-frontend.onrender.com",
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    # Let's clean up origins to only be the ones from settings + localhost
+    allow_origins=[
+        settings.FRONTEND_BASE_URL,
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,18 +50,19 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
+    # --- THIS IS THE FIX ---
+    # We are removing the explicit `domain` attribute.
+    # This is safer and lets the browser scope the cookie to the request host.
     logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
-    # Production settings for cross-site OAuth cookie
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         session_cookie="session",
         same_site="none",
         https_only=True,
-        # We remove the hardcoded 'domain' attribute.
-        # This is safer and allows the browser to scope the cookie
-        # to the request host (aira3.onrender.com) automatically.
+        # domain="aira3.onrender.com", # <-- THIS LINE IS NOW REMOVED
     )
+    # --- END OF FIX ---
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
     # For local dev (http) use https_only=False and safer SameSite
@@ -91,3 +98,4 @@ app.include_router(superadmin.router, prefix="/superadmin", tags=["Super Admin"]
 app.include_router(favorites.router, tags=["Favorites"])
 app.include_router(search.router, prefix="/search", tags=["Search"])
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
+
