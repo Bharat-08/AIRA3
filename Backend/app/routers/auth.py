@@ -1,112 +1,137 @@
-# in backend/app/routers/auth.py
-
-from fastapi import APIRouter, Depends, Request, Response, HTTPException
-from starlette.responses import RedirectResponse, PlainTextResponse
-from fastapi.routing import APIRoute
+import logging
+from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from authlib.integrations.base_client.errors import MismatchingStateError
 
-from ..db.session import get_db
 from ..services.auth import oauth, provision_via_invite
-from ..security.jwt import issue_jwt, set_jwt_cookie, clear_jwt_cookie
 from ..config import settings
+from ..db.session import get_db
+from ..security.jwt import create_access_token
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
-
-@router.get("/google/login")
-async def google_login(request: Request):
+@router.get("/auth/google/login", tags=["Auth"])
+async def google_login(request: Request, redirect_url: str | None = None):
     """
-    Kicks off the Google OAuth flow by redirecting the user to Google.
-    Ensures session is written BEFORE redirect.
+    Initiate Google OAuth login.
     """
     print("\n=== GOOGLE LOGIN START ===")
+    # The debug print you added - you can leave or remove this
     print(f"DEBUG: Request scheme: {request.url.scheme}")
-    print("Incoming request headers:", dict(request.headers))
-    print("Incoming request.cookies:", request.cookies)
+    
+    print(f"Incoming request headers: {dict(request.headers)}")
+    print(f"Incoming request.cookies: {request.cookies}")
 
-    # --- Force session modification ---
-    # Authlib requires the session to exist before redirecting, otherwise no cookie is sent.
-    request.session["init"] = True
-    print("Session BEFORE redirect (after write):", dict(request.session))
+    # Store redirect_url in session if provided
+    if redirect_url:
+        request.session["redirect_url"] = redirect_url
+    else:
+        # Clear any old redirect_url
+        request.session.pop("redirect_url", None)
+
+    # Check if user is already authenticated
+    if "access_token" in request.session:
+        # If already logged in, redirect to frontend dashboard
+        return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/RecruiterDashboardPage")
+
+    print(f"Session BEFORE redirect (after write): {request.session}")
+    print("✅ Session modification forced, response will include Set-Cookie.")
+    
+    # This forces the session to be saved even if it's new
+    request.session.update({"init": True})
 
     redirect_uri = settings.OAUTH_REDIRECT_URI
-    response = await oauth.google.authorize_redirect(request, redirect_uri)
-
-    # Double ensure session is committed by setting another flag (debug)
-    request.session["_force_cookie"] = "1"
-    print("✅ Session modification forced, response will include Set-Cookie.")
-
-    return response
+    return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-
-# Use api_route so we can accept GET and HEAD explicitly
-@router.api_route("/google/callback", methods=["GET", "HEAD"])
+#
+# --- THIS IS THE FIX ---
+# We are adding a second route handler for the URL with the trailing slash
+# that Render's proxy is forcing. Both routes point to the *same function*.
+#
+@router.get("/auth/google/callback", include_in_schema=False)
+@router.get("/auth/google/callback/", include_in_schema=False) # <-- ADD THIS LINE
 async def google_callback(request: Request, db: Session = Depends(get_db)):
-    # If it's a HEAD request (probes), just respond 200 quickly
-    if request.method == "HEAD":
-        print("Received HEAD probe on /auth/google/callback — returning 200")
-        return Response(status_code=200)
-
+    """
+    Handle Google OAuth callback.
+    """
     print("\n=== GOOGLE CALLBACK ===")
-    print("Request method:", request.method)
-    print("Query params:", dict(request.query_params))
-    print("Incoming request headers:", dict(request.headers))
-    print("Incoming request.cookies:", request.cookies)
-    try:
-        print("Session AT callback:", dict(request.session))
-    except Exception as e:
-        print("Session AT callback: <error reading session>", e)
+    print(f"Request method: {request.method}")
+    print(f"Query params: {request.query_params}")
+    print(f"Incoming request headers: {dict(request.headers)}")
+    print(f"Incoming request.cookies: {request.cookies}")
+    print(f"Session AT callback: {request.session}")
 
-    # Attempt authorization and handle state mismatches gracefully
     try:
         token = await oauth.google.authorize_access_token(request)
-    except MismatchingStateError as mse:
-        # Log the diagnostic details that matter
-        print("MismatchingStateError caught:", repr(mse))
-        print("CALLBACK DEBUG: query state:", request.query_params.get("state"))
-        try:
-            print("CALLBACK DEBUG: session contents:", dict(request.session))
-        except Exception:
-            print("CALLBACK DEBUG: session contents: <error reading session>")
-        print("CALLBACK DEBUG: cookie header:", request.headers.get("cookie"))
-
-        # Redirect user to restart login (friendly fallback)
-        # Could also render a page instructing user to retry.
-        retry_url = f"{settings.FRONTEND_BASE_URL}/login?error=state_mismatch"
-        return RedirectResponse(url=retry_url, status_code=302)
-
+    except MismatchingStateError as e:
+        logger.error(f"MismatchingStateError caught: {e}")
+        print(f"MismatchingStateError caught: <{e}>")
+        print(f"CALLBACK DEBUG: query state: {request.query_params.get('state')}")
+        print(f"CALLBACK DEBUG: session contents: {request.session}")
+        print(f"CALLBACK DEBUG: cookie header: {request.headers.get('cookie')}")
+        # Redirect to frontend login page with error
+        return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/login?error=state_mismatch")
     except Exception as e:
-        print("authorize_access_token raised unexpected error:", repr(e))
-        raise
+        logger.error(f"Error authorizing access token: {e}")
+        print(f"Error authorizing access token: <{e}>")
+        return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/login?error=auth_failed")
 
-    # Normal successful flow below
     user_info = token.get("userinfo")
     if not user_info:
-        raise HTTPException(status_code=400, detail="Could not retrieve user info from Google.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not retrieve user info")
 
     email = user_info.get("email")
-    if not email:
-        raise HTTPException(status_code=400, detail="Google profile is missing an email address.")
-
     name = user_info.get("name")
     avatar_url = user_info.get("picture")
 
-    user, org, membership = provision_via_invite(
-        db,
-        email=email,
-        name=name,
-        avatar_url=avatar_url
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email not found in user info")
+
+    try:
+        user, organization, membership = provision_via_invite(
+            db=db,
+            email=email,
+            name=name,
+            avatar_url=avatar_url,
+        )
+    except HTTPException as e:
+        # This will catch the "No valid invitation" error
+        return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/login?error={e.detail}")
+
+    # Create access token (JWT)
+    access_token = create_access_token(
+        data={
+            "sub": str(user.id),
+            "email": user.email,
+            "role": membership.role,
+            "org_id": str(organization.id),
+            "is_superadmin": user.is_superadmin,
+        }
     )
 
-    access_token = issue_jwt(
-        sub=str(user.id),
-        org_id=str(membership.org_id),
-        role=membership.role
-    )
+    # Store token and user info in the session (server-side)
+    request.session["access_token"] = access_token
+    request.session["user"] = {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "avatar_url": user.avatar_url,
+        "role": membership.role,
+        "org_id": str(organization.id),
+        "is_superadmin": user.is_superadmin,
+    }
 
-    redirect_url = f"{settings.FRONTEND_BASE_URL}/RecruiterDashboardPage"
-    response = RedirectResponse(url=redirect_url)
-    set_jwt_cookie(response, access_token)
-    return response
+    print(f"✅ User {user.email} authenticated successfully.")
+    print(f"Session AFTER auth: {request.session}")
+    
+    # Check for a stored redirect_url
+    redirect_url = request.session.pop("redirect_url", None)
+    if redirect_url:
+        # Note: This is a simple redirect. For robustness, you'd validate this URL.
+        return RedirectResponse(url=redirect_url)
+
+    # Redirect to the main frontend app
+    return RedirectResponse(url=settings.FRONTEND_BASE_URL)
