@@ -30,6 +30,7 @@ origins = [
     settings.FRONTEND_BASE_URL,
     "http://localhost:5173",
     "http://localhost:3000",
+    "https://aira3-frontend.onrender.com", # <-- Fixed typo here
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -43,16 +44,17 @@ app.add_middleware(
 logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none' and domain='aira3.onrender.com'")
-    # IMPORTANT: domain is set explicitly to the backend host to avoid Chrome rejecting the cookie
-    # in this Render + Cloudflare + subdomain setup.
+    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
+    # Production settings for cross-site OAuth cookie
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         session_cookie="session",
         same_site="none",
         https_only=True,
-        domain="aira3.onrender.com",  # <- explicit backend hostname
+        # We remove the hardcoded 'domain' attribute.
+        # This is safer and allows the browser to scope the cookie
+        # to the request host (aira3.onrender.com) automatically.
     )
 else:
     logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
@@ -68,7 +70,7 @@ else:
 # Log whether we have a session secret present (do not log the secret itself)
 logger.info("Session secret present: %s", bool(settings.SESSION_SECRET_KEY))
 
-# --- Configure OAuth *AFTER* SessionMiddleware ---
+#  Configure OAuth *AFTER* SessionMiddleware 
 logger.info("Registering Google OAuth client...")
 oauth.register(
     name="google",
@@ -79,7 +81,7 @@ oauth.register(
 )
 logger.info("Google OAuth client registered.")
 
-# --- API Routers ---
+#  API Routers 
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
