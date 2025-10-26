@@ -12,7 +12,6 @@ from .routers import (
     favorites, upload, roles, search
 )
 
-# --- Setup Logger ---
 logger = logging.getLogger("uvicorn")
 
 app = FastAPI(
@@ -21,51 +20,38 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# --- ProxyHeadersMiddleware FIRST (so X-Forwarded-* are honored early) ---
-# Ensures the app correctly detects scheme (https) behind Render/Cloudflare proxies.
+# 1) Honor X-Forwarded-* so scheme=HTTPS is detected behind Render
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
-# --- CORS Middleware Configuration ---
-origins = [
-    settings.FRONTEND_BASE_URL,
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https.aira3-frontend.onrender.com", # <- This had a typo, but let's fix it properly
-    "https://aira3-frontend.onrender.com",
-]
+# 2) CORS: explicitly include your prod frontend origin, plus localhost
+#    Do not rely solely on FRONTEND_BASE_URL for this.
+PROD_FRONTEND = "https://aira3-frontend.onrender.com"
+LOCAL_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
+ALLOWED_ORIGINS = {PROD_FRONTEND, settings.FRONTEND_BASE_URL, *LOCAL_ORIGINS}
+
 app.add_middleware(
     CORSMiddleware,
-    # Let's clean up origins to only be the ones from settings + localhost
-    allow_origins=[
-        settings.FRONTEND_BASE_URL,
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=list(ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- SessionMiddleware Configuration (Production & Development) ---
-logger.info(f"Checking APP_ENV: '{settings.APP_ENV}'")
+# 3) Sessions
+logger.info("Checking APP_ENV: '%s'", settings.APP_ENV)
 if settings.APP_ENV == "prod":
     logger.info("✅ RUNNING IN PRODUCTION MODE (prod)")
-    # --- THIS IS THE FIX ---
-    # We are removing the explicit `domain` attribute.
-    # This is safer and lets the browser scope the cookie to the request host.
-    logger.info("✅ Setting SessionMiddleware with https_only=True and same_site='none'")
+    logger.info("✅ SessionMiddleware: https_only=True, same_site='none'")
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
         session_cookie="session",
-        same_site="none",
-        https_only=True,
-        # domain="aira3.onrender.com", # <-- THIS LINE IS NOW REMOVED
+        same_site="none",     # required for cross-site OAuth redirects
+        https_only=True,      # sets Secure
+        # no explicit domain -> cookie is scoped to aira3.onrender.com
     )
-    # --- END OF FIX ---
 else:
-    logger.warning(f"⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV={settings.APP_ENV})")
-    # For local dev (http) use https_only=False and safer SameSite
+    logger.warning("⚠️ RUNNING IN DEVELOPMENT MODE (APP_ENV=%s)", settings.APP_ENV)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.SESSION_SECRET_KEY,
@@ -74,10 +60,9 @@ else:
         https_only=False,
     )
 
-# Log whether we have a session secret present (do not log the secret itself)
 logger.info("Session secret present: %s", bool(settings.SESSION_SECRET_KEY))
 
-#  Configure OAuth *AFTER* SessionMiddleware 
+# 4) Register Google OAuth AFTER SessionMiddleware
 logger.info("Registering Google OAuth client...")
 oauth.register(
     name="google",
@@ -88,7 +73,7 @@ oauth.register(
 )
 logger.info("Google OAuth client registered.")
 
-#  API Routers 
+# 5) Routers
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
@@ -98,4 +83,3 @@ app.include_router(superadmin.router, prefix="/superadmin", tags=["Super Admin"]
 app.include_router(favorites.router, tags=["Favorites"])
 app.include_router(search.router, prefix="/search", tags=["Search"])
 app.include_router(roles.router, prefix="/roles", tags=["Roles"])
-
