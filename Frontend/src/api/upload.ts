@@ -1,8 +1,9 @@
 // src/api/upload.ts
 
-// --- FIX: Define the API_BASE_URL constant directly in this file ---
-// This resolves the error because the App component does not export this value.
-// const API_BASE_URL = 'http://localhost:8000'; // Your FastAPI server URL
+// --- THIS IS THE FIX ---
+// 1. Define the API_URL from environment variables
+const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+// --- END OF FIX ---
 
 /**
  * Uploads a single Job Description file to the backend.
@@ -13,10 +14,11 @@ export const uploadJdFile = async (file: File) => {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`/api/upload/jd`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/upload/jd`, {
     method: 'POST',
     body: formData,
-    credentials: 'include', // Required to send the auth cookie
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -47,10 +49,11 @@ export const uploadResumeFiles = async (files: FileList, jdId: string): Promise<
     formData.append('files', files[i]);
   }
 
-  const response = await fetch(`/api/upload/resumes`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/upload/resumes`, {
     method: 'POST',
     body: formData,
-    credentials: 'include', // Required to send the auth cookie
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {

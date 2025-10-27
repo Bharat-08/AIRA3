@@ -1,6 +1,10 @@
+// src/api/search.ts
 import type { Candidate } from '../types/candidate';
 
-// const API_BASE_URL = 'http://localhost:8000'; // Your FastAPI server URL
+// --- THIS IS THE FIX ---
+// 1. Define the API_URL from environment variables
+const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+// --- END OF FIX ---
 
 // --- TYPES for the new asynchronous API responses ---
 interface TaskStartResponse {
@@ -23,13 +27,14 @@ interface TaskStatusResponse {
  * @returns An object containing the task_id for the background job.
  */
 export const startSearchAndRankTask = async (jdId: string, prompt: string): Promise<TaskStartResponse> => {
-  const response = await fetch(`/api/search/search`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/search`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ jd_id: jdId, prompt: prompt }),
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -47,8 +52,8 @@ export const startSearchAndRankTask = async (jdId: string, prompt: string): Prom
  * @param jdId The ID of the job description.
  * @param prompt Optional prompt string (may be empty).
  * @param searchOption Numeric option:
- *   1 -> Fast search (Apollo-only)
- *   2 -> Web search + Apollo
+ * 1 -> Fast search (Apollo-only)
+ * 2 -> Web search + Apollo
  *
  * @returns TaskStartResponse with task_id
  */
@@ -58,12 +63,13 @@ export const startApolloSearchTask = async (jdId: string, prompt: string, search
     throw new Error('searchOption must be 1 (Fast) or 2 (Web + Apollo)');
   }
 
-  const response = await fetch(`/api/search/apollo-search/${encodeURIComponent(jdId)}`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/apollo-search/${encodeURIComponent(jdId)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
     body: JSON.stringify({
       search_option: searchOption,
       prompt: prompt || ''
@@ -84,9 +90,10 @@ export const startApolloSearchTask = async (jdId: string, prompt: string, search
  * @returns The current status of the task and the final data if completed.
  */
 export const getSearchResults = async (taskId: string): Promise<TaskStatusResponse> => {
-  const response = await fetch(`/api/search/search/results/${taskId}`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/search/results/${taskId}`, {
     method: 'GET',
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -107,13 +114,14 @@ export const getSearchResults = async (taskId: string): Promise<TaskStatusRespon
  * @returns An object containing the task_id for the background job.
  */
 export const startRankResumesTask = async (jdId: string, prompt: string): Promise<TaskStartResponse> => {
-  const response = await fetch(`/api/search/rank-resumes`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/rank-resumes`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ jd_id: jdId, prompt: prompt }),
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -130,9 +138,10 @@ export const startRankResumesTask = async (jdId: string, prompt: string): Promis
  * @returns The current status of the task and the final data if completed.
  */
 export const getRankResumesResults = async (taskId: string): Promise<TaskStatusResponse> => {
-  const response = await fetch(`/api/search/rank-resumes/results/${taskId}`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/rank-resumes/results/${taskId}`, {
     method: 'GET',
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -151,12 +160,13 @@ export const getRankResumesResults = async (taskId: string): Promise<TaskStatusR
  * @param taskId The ID of the task to cancel.
  */
 export const stopTask = async (taskId: string): Promise<{ message: string }> => {
-  const response = await fetch(`/api/search/cancel/${taskId}`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/cancel/${taskId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -174,13 +184,14 @@ export const stopTask = async (taskId: string): Promise<{ message: string }> => 
  * @returns An object containing the newly generated profile_url.
  */
 export const generateLinkedInUrl = async (profileId: string): Promise<{ linkedin_url: string }> => {
-  const response = await fetch(`/api/search/generate-linkedin-url`, {
+  // 2. Prepend API_URL and remove '/api'
+  const response = await fetch(`${API_URL}/search/generate-linkedin-url`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ profile_id: profileId }),
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
   });
 
   if (!response.ok) {
@@ -191,24 +202,9 @@ export const generateLinkedInUrl = async (profileId: string): Promise<{ linkedin
   return response.json();
 };
 
-// Add this new function
-export const generateLinkedinUrl = async (profileId: string, token: string): Promise<{ linkedin_url: string }> => {
-  const response = await fetch(`/api/search/generate-linkedin-url`, {
-      method: 'POST',
-      headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ profile_id: profileId })
-  });
-
-  if(!response.ok){
-      const errorData = await response.json().catch(() => ({ detail: 'Failed to generate LinkedIn URL' }));
-      throw new Error(errorData.detail);
-  }
-
-  return response.json();
-};
+// --- FIX: Removed the duplicate generateLinkedinUrl function ---
+// The function above handles cookie-based auth, so the 
+// one with the 'token' parameter was redundant and a syntax error.
 
 
 /**
@@ -222,12 +218,14 @@ export const toggleFavorite = async (
   source: 'ranked_candidates' | 'ranked_candidates_from_resume',
   favorite: boolean
 ): Promise<{ candidate_id: string; favorite: boolean }> => {
-  const response = await fetch(`/api/favorites/toggle`, {
+  // 2. Prepend API_URL and remove '/api'
+  // Note: This endpoint is /favorites, not /search
+  const response = await fetch(`${API_URL}/favorites/toggle`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
+    credentials: 'include', // 3. Keep credentials: 'include'
     body: JSON.stringify({
       candidate_id: candidateId,
       source,

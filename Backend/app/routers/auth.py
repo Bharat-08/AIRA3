@@ -1,6 +1,6 @@
 # in backend/app/routers/auth.py
 
-from fastapi import APIRouter, Depends, Request, Response, HTTPException
+from fastapi import APIRouter, Depends, Request, Response, HTTPException, status
 from starlette.responses import RedirectResponse, PlainTextResponse
 from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
@@ -107,6 +107,14 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     )
 
     redirect_url = f"{settings.FRONTEND_BASE_URL}/RecruiterDashboardPage"
-    response = RedirectResponse(url=redirect_url)
+    
+    # --- THIS IS THE FIX ---
+    # Change the status code from 307 (default) to 303 (See Other).
+    # This is the semantically correct way to redirect after a successful
+    # operation and ensures the browser makes a fresh GET request,
+    # correctly handling the new cookie.
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+    # --- END OF FIX ---
+    
     set_jwt_cookie(response, access_token)
     return response

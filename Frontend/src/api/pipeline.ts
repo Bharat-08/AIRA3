@@ -34,7 +34,6 @@ const mockCandidates: PipelineCandidate[] = [
     status: 'Contacted',
     stage: 'Interviewing',
   },
-  // --- START: ADDED MOCK CANDIDATES ---
   {
     id: '5',
     name: 'Emma Garcia',
@@ -99,13 +98,30 @@ const mockCandidates: PipelineCandidate[] = [
     status: 'Favourited',
     stage: 'Rejected',
   },
-  // --- END: ADDED MOCK CANDIDATES ---
 ];
 
-export const getPipelineCandidates = (): Promise<PipelineCandidate[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(mockCandidates);
-    }, 300); // Simulate network delay
+// If you were to fetch this from the API, the function would look like this:
+/*
+const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+export const fetchPipelineCandidates = async (roleId: string): Promise<PipelineCandidate[]> => {
+  // This is an example endpoint, please change it to your actual API endpoint
+  const response = await fetch(`${API_URL}/roles/${roleId}/pipeline`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch pipeline candidates');
+  }
+  return response.json();
+};
+*/
+
+// For now, we just export the mock data as it appears in your file
+export const getMockPipelineCandidates = (): PipelineCandidate[] => {
+  return mockCandidates;
 };
