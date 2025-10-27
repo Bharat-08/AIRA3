@@ -4,6 +4,7 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi import Request, Response, HTTPException
 from starlette.status import HTTP_401_UNAUTHORIZED
+from sqlalchemy.orm import Session  # <-- Added this missing import
 
 from ..config import settings
 from ..db.session import get_db
@@ -60,20 +61,16 @@ def set_jwt_cookie(response: Response, token: str):
     Attaches the JWT as an HttpOnly, samesite=none, secure cookie to the response.
     """
     
-    # --- THIS IS THE FIX ---
-    # `samesite="lax"` (the default) prevents cookies from being sent cross-origin.
-    # Since your FE and BE are on different subdomains, you MUST use "none".
-    #
-    # When using `samesite="none"`, `secure=True` is mandatory.
-    # The existing `secure=settings.APP_ENV == "prod"` line
-    # already handles this correctly for your production environment.
+    # --- THIS IS THE CORRECT FIX ---
+    # `samesite="none"` is required for cross-domain cookies.
+    # `secure=True` (in prod) is mandatory when using samesite="none".
     #
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="none", # <-- CHANGE THIS FROM "lax" to "none"
-        secure=settings.APP_ENV == "prod", 
+        samesite="none", # <-- This is correct
+        secure=settings.APP_ENV == "prod", # <-- This is correct
         expires_in=settings.JWT_EXPIRATION_MINUTES * 60,
     )
     # --- END OF FIX ---
@@ -86,8 +83,8 @@ def clear_jwt_cookie(response: Response):
     response.delete_cookie(
         key=settings.COOKIE_NAME,
         httponly=True,
-        samesite="none", # <-- Also change this one for consistency
-        secure=settings.APP_ENV == "prod",
+        samesite="none", # <-- This is correct
+        secure=settings.APP_ENV == "prod", # <-- This is correct
     )
 
 
