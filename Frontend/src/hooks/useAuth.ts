@@ -5,18 +5,24 @@ export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- THIS IS THE MISSING LINE ---
+  // This reads the VITE_API_BASE_URL environment variable.
+  // In production (OnRender), this will be 'https://aira3.onrender.com'
+  // In local dev, it will be '/api' (from your .env.development file)
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+  // --- END OF FIX ---
+
   useEffect(() => {
     const fetchUser = async () => {
       try {
         //
-        // --- THIS IS THE FIX ---
-        // You MUST add `credentials: 'include'` so the browser
-        // sends the session cookie to the /api/me endpoint.
+        // This path is now correct for both environments:
+        // Prod: 'https://aira3.onrender.com/me'
+        // Dev:  '/api/me' (which your vite.config.ts proxy will handle)
         //
-        const response = await fetch('/api/me', {
-          credentials: 'include', // <-- ADD THIS LINE
+        const response = await fetch(`${API_URL}/me`, {
+          credentials: 'include', 
         });
-        // --- END OF FIX ---
 
         if (!response.ok) {
           // This is normal if the user is not logged in
