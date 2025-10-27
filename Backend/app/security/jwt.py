@@ -1,70 +1,132 @@
-# recruiter-platform/backend/app/security/jwt.py
+# In Backend/app/security/jwt.py
 
 import jwt
 from datetime import datetime, timedelta, timezone
-from fastapi import Response, HTTPException, status
-from ..config import settings
+from fastapi import Request, Response, HTTPException
+from starlette.status import HTTP_401_UNAUTHORIZED
 
-ALGO = "RS256"
+from ..config import settings
+from ..db.session import get_db
+from ..models.user import User
+from ..models.membership import Membership
+
+ALGORITHM = settings.JWT_ALGORITHM
+PRIVATE_KEY = settings.JWT_PRIVATE_KEY
+PUBLIC_KEY = settings.JWT_PUBLIC_KEY
+EXPIRATION_MINUTES = settings.JWT_EXPIRATION_MINUTES
+
 
 def issue_jwt(sub: str, org_id: str, role: str) -> str:
     """
-    Creates a new JWT for a user session.
+    Generates a new RS256 JWT token.
     """
+    if not PRIVATE_KEY:
+        raise ValueError("JWT_PRIVATE_KEY is not set.")
+    
     now = datetime.now(timezone.utc)
     payload = {
         "iat": now,
-        "exp": now + timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+        "exp": now + timedelta(minutes=EXPIRATION_MINUTES),
         "sub": sub,
         "org_id": org_id,
         "role": role,
     }
-    private_key_bytes = settings.JWT_PRIVATE_KEY.encode('utf-8')
+    return jwt.encode(payload, PRIVATE_KEY, algorithm=ALGORITHM)
+
+
+def decode_jwt(token: str):
+    """
+    Decodes and validates an RS256 JWT token.
+    """
+    if not PUBLIC_KEY:
+        raise ValueError("JWT_PUBLIC_KEY is not set.")
     
-    # ----> ADD THIS DEBUG CODE <----
-    print("--- DEBUG: JWT_PRIVATE_KEY as read by settings ---")
-    print(repr(settings.JWT_PRIVATE_KEY))
-    print("--- END DEBUG ---")
-    # ---------------------------------
-    
-    # ----> ADD THIS NEW DEBUG CODE <----
-    print("--- DEBUG: JWT_PUBLIC_KEY as read by settings ---")
-    print(repr(settings.JWT_PUBLIC_KEY))
-    print("--- END DEBUG ---")
-    # ---------------------
-    
-    token = jwt.encode(payload, private_key_bytes, algorithm=ALGO)
-    return token
+    try:
+        decoded = jwt.decode(
+            token,
+            PUBLIC_KEY,
+            algorithms=[ALGORITHM],
+            options={"require": ["exp", "iat", "sub"]}
+        )
+        return decoded
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
 
 def set_jwt_cookie(response: Response, token: str):
     """
-    Sets the JWT as a secure, httpOnly cookie on the response.
+    Attaches the JWT as an HttpOnly, samesite=none, secure cookie to the response.
     """
+    
+    # --- THIS IS THE FIX ---
+    # `samesite="lax"` (the default) prevents cookies from being sent cross-origin.
+    # Since your FE and BE are on different subdomains, you MUST use "none".
+    #
+    # When using `samesite="none"`, `secure=True` is mandatory.
+    # The existing `secure=settings.APP_ENV == "prod"` line
+    # already handles this correctly for your production environment.
+    #
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=True if settings.APP_ENV != "dev" else False,
-        samesite="lax",
-        max_age=settings.JWT_EXPIRATION_MINUTES * 60
+        samesite="none", # <-- CHANGE THIS FROM "lax" to "none"
+        secure=settings.APP_ENV == "prod", 
+        expires_in=settings.JWT_EXPIRATION_MINUTES * 60,
     )
+    # --- END OF FIX ---
+
 
 def clear_jwt_cookie(response: Response):
     """
-    Clears the JWT cookie from the response.
+    Clears the JWT cookie.
     """
-    response.delete_cookie(key=settings.COOKIE_NAME)
+    response.delete_cookie(
+        key=settings.COOKIE_NAME,
+        httponly=True,
+        samesite="none", # <-- Also change this one for consistency
+        secure=settings.APP_ENV == "prod",
+    )
 
-def verify_jwt(token: str) -> dict:
+
+def get_jwt_from_cookie(request: Request) -> str | None:
     """
-    Verifies a JWT and returns its payload.
-    Raises HTTPException if the token is invalid.
+    Extracts the JWT token from the request's cookies.
+    """
+    return request.cookies.get(settings.COOKIE_NAME)
+
+
+def get_user_from_jwt(token: str, db: Session) -> (User, Membership):
+    """
+    Helper function to get user and membership from DB based on JWT payload.
     """
     try:
-        public_key_bytes = settings.JWT_PUBLIC_KEY.encode('utf-8')
-        payload = jwt.decode(token, public_key_bytes, algorithms=[ALGO])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        payload = decode_jwt(token)
+        user_id = payload.get("sub")
+        org_id = payload.get("org_id")
+        
+        if not user_id or not org_id:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="User not found")
+        
+        membership = db.query(Membership).filter(
+            Membership.user_id == user_id,
+            Membership.org_id == org_id
+        ).first()
+
+        if not membership:
+             raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="User membership not found")
+
+        return user, membership
+
+    except HTTPException as e:
+        # Re-raise HTTP exceptions from decode_jwt
+        raise e
+    except Exception as e:
+        print(f"Unexpected error in get_user_from_jwt: {e}")
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
