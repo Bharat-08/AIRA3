@@ -7,7 +7,11 @@ from authlib.integrations.base_client.errors import MismatchingStateError
 from ..services.auth import oauth, provision_via_invite
 from ..config import settings
 from ..db.session import get_db
-from ..security.jwt import create_access_token
+#
+# --- THIS IS FIX 1 of 2 ---
+# Renamed `create_access_token` to `create_jwt_token` to match your jwt.py file
+#
+from ..security.jwt import create_jwt_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,7 +38,7 @@ async def google_login(request: Request, redirect_url: str | None = None):
     # Check if user is already authenticated
     if "access_token" in request.session:
         # If already logged in, redirect to frontend dashboard
-        return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/RecruiterDashboardPage")
+        return RedirectResponse(url=f"{settings.FRONTEND__URL}/RecruiterDashboardPage")
 
     print(f"Session BEFORE redirect (after write): {request.session}")
     print("✅ Session modification forced, response will include Set-Cookie.")
@@ -46,13 +50,9 @@ async def google_login(request: Request, redirect_url: str | None = None):
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-#
-# --- THIS IS THE FIX ---
-# We are adding a second route handler for the URL with the trailing slash
-# that Render's proxy is forcing. Both routes point to the *same function*.
-#
+# This is the fix for the '307' redirect
 @router.get("/auth/google/callback", include_in_schema=False)
-@router.get("/auth/google/callback/", include_in_schema=False) # <-- ADD THIS LINE
+@router.get("/auth/google/callback/", include_in_schema=False) 
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     """
     Handle Google OAuth callback.
@@ -101,8 +101,11 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         # This will catch the "No valid invitation" error
         return RedirectResponse(url=f"{settings.FRONTEND_BASE_URL}/login?error={e.detail}")
 
-    # Create access token (JWT)
-    access_token = create_access_token(
+    #
+    # --- THIS IS FIX 2 of 2 ---
+    # Renamed function call to match the import
+    #
+    access_token = create_jwt_token(
         data={
             "sub": str(user.id),
             "email": user.email,
