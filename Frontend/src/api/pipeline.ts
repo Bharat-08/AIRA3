@@ -96,7 +96,7 @@ const mockCandidates: PipelineCandidate[] = [
     role: 'Data Analyst',
     company: 'DataMinds Inc.',
     status: 'Favourited',
-    stage: 'Rejected',
+    stage: 'Hired',
   },
 ];
 
@@ -104,7 +104,9 @@ const mockCandidates: PipelineCandidate[] = [
 /*
 const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-export const fetchPipelineCandidates = async (roleId: string): Promise<PipelineCandidate[]> => {
+// Note: This function is also named correctly, but is commented out
+// because your file currently only uses mock data.
+export const getPipelineCandidates = async (roleId: string): Promise<PipelineCandidate[]> => {
   // This is an example endpoint, please change it to your actual API endpoint
   const response = await fetch(`${API_URL}/roles/${roleId}/pipeline`, {
     method: 'GET',
@@ -121,7 +123,10 @@ export const fetchPipelineCandidates = async (roleId: string): Promise<PipelineC
 };
 */
 
-// For now, we just export the mock data as it appears in your file
-export const getMockPipelineCandidates = (): PipelineCandidate[] => {
+// --- THIS IS THE FIX ---
+// I have renamed 'getMockPipelineCandidates' to 'getPipelineCandidates'
+// to match what your PipelinePage.tsx is trying to import.
+export const getPipelineCandidates = (): PipelineCandidate[] => {
   return mockCandidates;
 };
+// --- END OF FIX ---
