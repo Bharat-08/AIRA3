@@ -6,14 +6,21 @@ from app.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.models.membership import Membership
-from .jwt import verify_jwt
+
+# --- THIS IS THE FIX ---
+# The function in jwt.py is named 'decode_jwt', not 'verify_jwt'.
+from .jwt import decode_jwt
+# --- END OF FIX ---
 
 def get_current_session(request: Request):
     token = request.cookies.get(settings.COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
-        claims = verify_jwt(token)
+        # --- AND THIS IS THE CORRESPONDING CHANGE ---
+        # Call 'decode_jwt' here
+        claims = decode_jwt(token)
+        # --- END OF CHANGE ---
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return claims
